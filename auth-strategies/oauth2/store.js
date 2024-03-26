@@ -30,10 +30,34 @@ function getOAuth2StoreStrategy(id) {
             }
             return await (0, validate_callback_1.validateStoreCallback)(profile, {
                 container: this.container,
-                strategyErrorIdentifier: 'oauth2',
+                strategyErrorIdentifier: "oauth2",
                 strict: this.strict,
                 strategyName,
             });
+        }
+        userProfile(accessToken, done) {
+            const self = this;
+            let json;
+            try {
+                json = JSON.parse(Buffer.from(accessToken.split(".")[1], "base64").toString());
+            }
+            catch (ex) {
+                return done(new Error("Failed to parse access token"));
+            }
+            const profile = {
+                provider: "keycloak",
+            };
+            profile.id = json.sub;
+            profile.username = json.preferred_username;
+            profile.email = json.email || "";
+            profile.name = json.name || "";
+            profile.given_name = json.given_name || "";
+            profile.family_name = json.family_name || "";
+            profile.email_verified = json.email_verified || "";
+            profile.roles = json.realm_access.roles || "";
+            // profile._raw = body;
+            profile._json = json;
+            done(null, profile);
         }
     };
 }
@@ -48,10 +72,10 @@ function getOAuth2StoreAuthRouter(id, oauth2, configModule) {
     var _a, _b;
     const strategyName = `${types_1.OAUTH2_STORE_STRATEGY_NAME}_${id}`;
     return (0, auth_routes_builder_1.passportAuthRoutesBuilder)({
-        domain: 'store',
+        domain: "store",
         configModule,
-        authPath: (_a = oauth2.store.authPath) !== null && _a !== void 0 ? _a : '/store/auth/oauth2',
-        authCallbackPath: (_b = oauth2.store.authCallbackPath) !== null && _b !== void 0 ? _b : '/store/auth/oauth2/cb',
+        authPath: (_a = oauth2.store.authPath) !== null && _a !== void 0 ? _a : "/store/auth/oauth2",
+        authCallbackPath: (_b = oauth2.store.authCallbackPath) !== null && _b !== void 0 ? _b : "/store/auth/oauth2/cb",
         successRedirect: oauth2.store.successRedirect,
         strategyName,
         passportAuthenticateMiddlewareOptions: {},
