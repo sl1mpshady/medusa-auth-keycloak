@@ -1,5 +1,5 @@
 {
-  "name": "medusa-plugin-keycloak",
+  "name": "medusa-auth-keycloak",
   "version": "1.10.3",
   "description": "Social authentication plugin for medusajs",
   "keywords": [
