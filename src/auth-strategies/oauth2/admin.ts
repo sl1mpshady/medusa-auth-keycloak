@@ -1,57 +1,103 @@
-import { Strategy as OAuth2Strategy, StrategyOptionsWithRequest } from 'passport-oauth2';
-import { ConfigModule, MedusaContainer } from '@medusajs/medusa/dist/types/global';
-import { Router } from 'express';
-import { OAUTH2_ADMIN_STRATEGY_NAME, OAuth2AuthOptions, Profile } from './types';
-import { PassportStrategy } from '../../core/passport/Strategy';
-import { validateAdminCallback } from '../../core/validate-callback';
-import { passportAuthRoutesBuilder } from '../../core/passport/utils/auth-routes-builder';
-import { AuthProvider, StrategyFactory } from '../../types';
+import {
+  Strategy as OAuth2Strategy,
+  StrategyOptionsWithRequest,
+} from "passport-oauth2";
+import {
+  ConfigModule,
+  MedusaContainer,
+} from "@medusajs/medusa/dist/types/global";
+import { Router } from "express";
+import {
+  OAUTH2_ADMIN_STRATEGY_NAME,
+  OAuth2AuthOptions,
+  Profile,
+  KeycloakProfile,
+} from "./types";
+import { PassportStrategy } from "../../core/passport/Strategy";
+import { validateAdminCallback } from "../../core/validate-callback";
+import { passportAuthRoutesBuilder } from "../../core/passport/utils/auth-routes-builder";
+import { AuthProvider, StrategyFactory } from "../../types";
 
-export function getOAuth2AdminStrategy(id: string): StrategyFactory<OAuth2AuthOptions> {
-	const strategyName = `${OAUTH2_ADMIN_STRATEGY_NAME}_${id}`;
-	return class extends PassportStrategy(OAuth2Strategy, strategyName) {
-		constructor(
-			protected readonly container: MedusaContainer,
-			protected readonly configModule: ConfigModule,
-			protected readonly strategyOptions: OAuth2AuthOptions,
-			protected readonly strict?: AuthProvider['strict']
-		) {
-			super({
-				authorizationURL: strategyOptions.authorizationURL,
-				tokenURL: strategyOptions.tokenURL,
-				clientID: strategyOptions.clientID,
-				clientSecret: strategyOptions.clientSecret,
-				callbackURL: strategyOptions.admin.callbackUrl,
-				passReqToCallback: true,
-				scope: strategyOptions.scope,
-			} as StrategyOptionsWithRequest);
-		}
+export function getOAuth2AdminStrategy(
+  id: string
+): StrategyFactory<OAuth2AuthOptions> {
+  const strategyName = `${OAUTH2_ADMIN_STRATEGY_NAME}_${id}`;
+  return class extends PassportStrategy(OAuth2Strategy, strategyName) {
+    constructor(
+      protected readonly container: MedusaContainer,
+      protected readonly configModule: ConfigModule,
+      protected readonly strategyOptions: OAuth2AuthOptions,
+      protected readonly strict?: AuthProvider["strict"]
+    ) {
+      super({
+        authorizationURL: strategyOptions.authorizationURL,
+        tokenURL: strategyOptions.tokenURL,
+        clientID: strategyOptions.clientID,
+        clientSecret: strategyOptions.clientSecret,
+        callbackURL: strategyOptions.admin.callbackUrl,
+        passReqToCallback: true,
+        scope: strategyOptions.scope,
+      } as StrategyOptionsWithRequest);
+    }
 
-		async validate(
-			req: Request,
-			accessToken: string,
-			refreshToken: string,
-			profile: Profile
-		): Promise<null | { id: string }> {
-			if (this.strategyOptions.admin.verifyCallback) {
-				return await this.strategyOptions.admin.verifyCallback(
-					this.container,
-					req,
-					accessToken,
-					refreshToken,
-					profile,
-					this.strict
-				);
-			}
+    async validate(
+      req: Request,
+      accessToken: string,
+      refreshToken: string,
+      profile: Profile
+    ): Promise<null | { id: string }> {
+      if (this.strategyOptions.admin.verifyCallback) {
+        return await this.strategyOptions.admin.verifyCallback(
+          this.container,
+          req,
+          accessToken,
+          refreshToken,
+          profile,
+          this.strict
+        );
+      }
 
-			return await validateAdminCallback(profile, {
-				container: this.container,
-				strategyErrorIdentifier: 'oauth2',
-				strict: this.strict,
-				strategyName,
-			});
-		}
-	};
+      return await validateAdminCallback(profile, {
+        container: this.container,
+        strategyErrorIdentifier: "oauth2",
+        strict: this.strict,
+        strategyName,
+      });
+    }
+
+    userProfile(
+      accessToken: string,
+      done: (err: any, profile?: KeycloakProfile) => void
+    ) {
+      const self = this;
+      let json;
+
+      try {
+        json = JSON.parse(
+          Buffer.from(accessToken.split(".")[1], "base64").toString()
+        );
+      } catch (ex) {
+        return done(new Error("Failed to parse access token"));
+      }
+
+      const profile: KeycloakProfile = {
+        provider: "keycloak",
+      } as any;
+      profile.id = json.sub;
+      profile.username = json.preferred_username;
+      profile.email = json.email || "";
+      profile.name = json.name || "";
+      profile.given_name = json.given_name || "";
+      profile.family_name = json.family_name || "";
+      profile.email_verified = json.email_verified || "";
+      profile.roles = json.realm_access.roles || "";
+
+      // profile._raw = body;
+      profile._json = json;
+
+      done(null, profile);
+    }
+  };
 }
 
 /**
@@ -60,19 +106,23 @@ export function getOAuth2AdminStrategy(id: string): StrategyFactory<OAuth2AuthOp
  * @param oauth2
  * @param configModule
  */
-export function getOAuth2AdminAuthRouter(id: string, oauth2: OAuth2AuthOptions, configModule: ConfigModule): Router {
-	const strategyName = `${OAUTH2_ADMIN_STRATEGY_NAME}_${id}`;
-	return passportAuthRoutesBuilder({
-		domain: 'admin',
-		configModule,
-		authPath: oauth2.admin.authPath ?? '/admin/auth/oauth2',
-		authCallbackPath: oauth2.admin.authCallbackPath ?? '/admin/auth/oauth2/cb',
-		successRedirect: oauth2.admin.successRedirect,
-		strategyName,
-		passportAuthenticateMiddlewareOptions: {},
-		passportCallbackAuthenticateMiddlewareOptions: {
-			failureRedirect: oauth2.admin.failureRedirect,
-		},
-		expiresIn: oauth2.admin.expiresIn,
-	});
+export function getOAuth2AdminAuthRouter(
+  id: string,
+  oauth2: OAuth2AuthOptions,
+  configModule: ConfigModule
+): Router {
+  const strategyName = `${OAUTH2_ADMIN_STRATEGY_NAME}_${id}`;
+  return passportAuthRoutesBuilder({
+    domain: "admin",
+    configModule,
+    authPath: oauth2.admin.authPath ?? "/admin/auth/oauth2",
+    authCallbackPath: oauth2.admin.authCallbackPath ?? "/admin/auth/oauth2/cb",
+    successRedirect: oauth2.admin.successRedirect,
+    strategyName,
+    passportAuthenticateMiddlewareOptions: {},
+    passportCallbackAuthenticateMiddlewareOptions: {
+      failureRedirect: oauth2.admin.failureRedirect,
+    },
+    expiresIn: oauth2.admin.expiresIn,
+  });
 }
